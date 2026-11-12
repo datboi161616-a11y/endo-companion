@@ -1,43 +1,295 @@
-import React,{useEffect,useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
+import {ActivityIndicator, Alert, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {StatusBar} from 'expo-status-bar';
-import {SafeAreaView,ScrollView,View,Text,Pressable,TextInput,StyleSheet,Alert,Platform,KeyboardAvoidingView,ActivityIndicator} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {File,Paths} from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
-import {Entry,localDate,upsert,csv,monthDays,parseBackup} from './src/model';
-const KEY='endo-companion-v1';
-const symptoms=['Cramps','Pelvic pain','Back pain','Bloating','Fatigue','Nausea','Headache','Bowel pain','Bladder pain','Brain fog','Pain with sex','Spotting'];
-const empty=(date:string):Entry=>({date,pain:0,flow:'None',symptoms:[],medications:'',notes:'',mood:'Okay',sleep:8});
-export default function App(){
- const [entries,setEntries]=useState<Entry[]>([]),[ready,setReady]=useState(false),[storageError,setStorageError]=useState(false),[tab,setTab]=useState('Today'),[date,setDate]=useState(localDate()),[draft,setDraft]=useState(empty(localDate())),[month,setMonth]=useState(new Date(new Date().getFullYear(),new Date().getMonth(),1)),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
- useEffect(()=>{AsyncStorage.getItem(KEY).then(raw=>{if(raw)setEntries(parseBackup(raw))}).catch(()=>{setStorageError(true)}).finally(()=>setReady(true))},[]);
- useEffect(()=>{setDraft(entries.find(e=>e.date===date)||empty(date));setMessage('')},[date,entries]);
- const patch=(p:Partial<Entry>)=>{setDraft(d=>({...d,...p}));setMessage('')};
- async function persist(next:Entry[]){await AsyncStorage.setItem(KEY,JSON.stringify(next));setEntries(next)}
- async function save(){setBusy(true);try{await persist(upsert(entries,draft));setMessage('Your check-in is saved.')}catch{Alert.alert('Could not save','Your check-in is still on screen. Please try again.')}finally{setBusy(false)}}
- async function share(kind:'csv'|'json'){try{const data=kind==='csv'?csv(entries):JSON.stringify(entries,null,2);if(Platform.OS==='web'){const url=URL.createObjectURL(new Blob([data],{type:kind==='csv'?'text/csv':'application/json'}));const a=document.createElement('a');a.href=url;a.download=`endo-companion.${kind}`;a.click();URL.revokeObjectURL(url)}else{const f=new File(Paths.cache,`endo-companion.${kind}`);f.write(data);await Sharing.shareAsync(f.uri,{mimeType:kind==='csv'?'text/csv':'application/json',UTI:kind==='csv'?'public.comma-separated-values-text':'public.json'})}}catch{Alert.alert('Export failed','Please try again.')}}
- async function restore(){try{const result=await DocumentPicker.getDocumentAsync({type:'application/json',copyToCacheDirectory:true});if(result.canceled)return;const asset=result.assets[0];const raw=Platform.OS==='web'?await (await fetch(asset.uri)).text():await new File(asset.uri).text();const incoming=parseBackup(raw);await persist(incoming.reduce((all,e)=>upsert(all,e),entries));setMessage(`Imported ${incoming.length} check-ins.`)}catch{Alert.alert('Import failed','Choose a valid Endo Companion JSON backup.')}}
- function remove(){const action=async()=>{try{await persist(entries.filter(e=>e.date!==date));setMessage('Check-in deleted.')}catch{Alert.alert('Could not delete','Please try again.')}};if(Platform.OS==='web'){if(confirm('Delete this check-in?'))void action()}else Alert.alert('Delete this check-in?','This cannot be undone.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:action}])}
- const button=(label:string,onPress:()=>void,selected=false)=> <Pressable key={label} accessibilityRole="button" accessibilityState={{selected}} onPress={onPress} style={[s.chip,selected&&s.chipActive]}><Text style={[s.chipText,selected&&s.chipTextActive]}>{label}</Text></Pressable>;
- const title=(text:string)=> <Text style={s.section}>{text}</Text>;
- const recent=entries.slice(0,30),average=recent.length?(recent.reduce((sum,e)=>sum+e.pain,0)/recent.length).toFixed(1):'—';
- if(!ready)return <SafeAreaView style={s.safe}><ActivityIndicator accessibilityLabel="Loading diary"/></SafeAreaView>;
- if(storageError)return <SafeAreaView style={s.safe}><View style={s.content}><Text style={s.heading}>Your diary could not be opened</Text><Text style={s.body}>Your saved data has not been overwritten. Close the app and try again.</Text></View></SafeAreaView>;
- return <SafeAreaView style={s.safe}><StatusBar style="dark"/><View style={s.header}><View><Text style={s.brand}>✿  endo companion</Text><Text style={s.tagline}>A little space to listen to your body.</Text></View><View style={s.flower}><Text style={{fontSize:26}}>🌷</Text></View></View>
- <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}><ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
- {tab==='Today'&&<><Text style={s.eyebrow}>YOUR DAILY CHECK-IN</Text><Text style={s.heading}>{date===localDate()?'How are you feeling?':'A moment to check in.'}</Text><Text style={s.body}>Every day is different. Your experience matters.</Text><View style={s.dateRow}>{button('‹',()=>setDate(localDate(new Date(new Date(date+'T12:00:00').getTime()-86400000))))}<Text style={s.date}>{new Date(date+'T12:00:00').toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'})}</Text>{button('›',()=>{const next=localDate(new Date(new Date(date+'T12:00:00').getTime()+86400000));if(next<=localDate())setDate(next)})}</View>
- <View style={s.card}>{title('Pain level')}<View style={s.between}><Text style={s.body}>{draft.pain===0?'No pain':draft.pain<4?'Mild':draft.pain<7?'Moderate':'Severe'}</Text><Text style={s.score}>{draft.pain}<Text style={s.body}> / 10</Text></Text></View><View style={s.wrap}>{Array.from({length:11},(_,n)=>button(String(n),()=>patch({pain:n}),draft.pain===n))}</View><Text style={s.hint}>0 = no pain · 10 = worst imaginable pain</Text></View>
- <View style={s.card}>{title('Period & flow')}<View style={s.wrap}>{['None','Spotting','Light','Medium','Heavy'].map(v=>button(v,()=>patch({flow:v}),draft.flow===v))}</View></View>
- <View style={s.card}>{title('What are you noticing?')}<Text style={s.hint}>Choose anything that fits today.</Text><View style={s.wrap}>{symptoms.map(v=>button(v,()=>patch({symptoms:draft.symptoms.includes(v)?draft.symptoms.filter(x=>x!==v):[...draft.symptoms,v]}),draft.symptoms.includes(v)))}</View></View>
- <View style={s.card}>{title('Mood & rest')}<View style={s.wrap}>{['Low','Anxious','Okay','Good','Great'].map(v=>button(v,()=>patch({mood:v}),draft.mood===v))}</View><View style={[s.between,{marginTop:16}]}><Text style={s.body}>Hours of sleep</Text><View style={s.dateRow}>{button('−',()=>patch({sleep:Math.max(0,draft.sleep-.5)}))}<Text style={s.date}>{draft.sleep}</Text>{button('+',()=>patch({sleep:Math.min(24,draft.sleep+.5)}))}</View></View></View>
- <View style={s.card}>{title('Medication & relief')}<TextInput accessibilityLabel="Medication and relief" placeholder="Medication, heat pad, rest…" placeholderTextColor="#8a8287" value={draft.medications} onChangeText={v=>patch({medications:v})} style={s.input} multiline/>{title('A note for yourself')}<TextInput accessibilityLabel="Daily notes" placeholder="Pain location, meals, what helped, or anything else…" placeholderTextColor="#8a8287" value={draft.notes} onChangeText={v=>patch({notes:v})} style={[s.input,{minHeight:100}]} multiline/></View>
- <Pressable accessibilityRole="button" disabled={busy} style={s.primary} onPress={save}><Text style={s.primaryText}>{busy?'Saving…':'Save check-in  ♡'}</Text></Pressable>{entries.some(e=>e.date===date)&&button('Delete this check-in',remove)}
- </>}
- {tab==='Calendar'&&<><Text style={s.eyebrow}>ONE DAY AT A TIME</Text><Text style={s.heading}>Your calendar</Text><Text style={s.body}>Tap a day to view or add your check-in.</Text><View style={s.card}><View style={s.between}>{button('‹',()=>setMonth(new Date(month.getFullYear(),month.getMonth()-1,1)))}<Text style={s.section}>{month.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</Text>{button('›',()=>setMonth(new Date(month.getFullYear(),month.getMonth()+1,1)))}</View><View style={s.calendar}>{['S','M','T','W','T','F','S'].map((v,i)=><View key={'h'+i} style={s.day}><Text style={s.hint}>{v}</Text></View>)}{monthDays(month.getFullYear(),month.getMonth()).map((day,i)=>{const d=day?localDate(new Date(month.getFullYear(),month.getMonth(),day)):'';const e=entries.find(x=>x.date===d);return <Pressable key={i} accessibilityLabel={d?`${d}${e?`, pain ${e.pain}, flow ${e.flow}`:''}`:'Empty day'} disabled={!day||d>localDate()} onPress={()=>{setDate(d);setTab('Today')}} style={[s.day,d===localDate()&&s.today]}><Text style={{color:d>localDate()?'#c8c1c4':'#393039',fontWeight:'600'}}>{day||''}</Text><View style={[s.dot,{backgroundColor:e?(e.flow!=='None'?'#be536f':e.pain>=7?'#ce8a43':'#8ba792'):'transparent'}]}/></Pressable>})}</View><Text style={s.hint}>● Rose: flow logged · Gold: high pain · Sage: check-in</Text></View></>}
- {tab==='History'&&<><Text style={s.eyebrow}>YOUR STORY, OVER TIME</Text><Text style={s.heading}>Patterns & history</Text><View style={s.stats}><View style={s.stat}><Text style={s.score}>{entries.length}</Text><Text style={s.hint}>check-ins</Text></View><View style={s.stat}><Text style={s.score}>{average}</Text><Text style={s.hint}>average pain*</Text></View></View><Text style={s.hint}>*Across your latest {recent.length} recorded days, up to 30.</Text>{!entries.length&&<View style={s.card}><Text style={s.section}>Your story starts here</Text><Text style={s.body}>Save your first check-in to begin your history.</Text></View>}{entries.map(e=><Pressable key={e.date} style={s.card} onPress={()=>{setDate(e.date);setTab('Today')}} accessibilityRole="button"><View style={s.between}><Text style={s.section}>{new Date(e.date+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}</Text><Text style={s.painBadge}>{e.pain}/10 pain</Text></View><Text style={s.body}>{e.flow==='None'?'No flow':e.flow+' flow'} · {e.mood} · {e.sleep}h sleep</Text>{!!e.symptoms.length&&<Text style={s.hint}>{e.symptoms.join(' · ')}</Text>}{!!e.notes&&<Text numberOfLines={2} style={s.body}>{e.notes}</Text>}</Pressable>)}</>}
- {tab==='Settings'&&<><Text style={s.eyebrow}>MADE FOR YOU</Text><Text style={s.heading}>Your space</Text><View style={s.card}>{title('Private by default')}<Text style={s.body}>Your entries stay in this app’s local storage. There is no account, advertising, or app-operated server. Device backups may include app data. This version does not add its own encryption or app lock.</Text></View><View style={s.card}>{title('Take your story with you')}<Text style={s.body}>Export a spreadsheet for appointments, or a JSON backup you can restore later. Shared files contain your health information.</Text>{button('Export CSV',()=>share('csv'))}{button('Save JSON backup',()=>share('json'))}{button('Import JSON backup',restore)}<Text style={s.hint}>Import merges records. Matching dates use the imported check-in. Back up before uninstalling.</Text></View><View style={s.card}>{title('A gentle reminder')}<Text style={s.body}>This is a personal diary, not a diagnostic tool. It does not predict cycles or offer treatment advice. Contact a healthcare professional about symptoms that concern you.</Text></View><Text style={s.hint}>Endo Companion · 1.0.0 · Made with care</Text></>}
- {!!message&&<Text accessibilityLiveRegion="polite" style={s.success}>{message}</Text>}<Text style={s.footer}>Small check-ins. A clearer picture. ♡</Text></ScrollView></KeyboardAvoidingView>
- <View style={s.nav}>{[['Today','♡'],['Calendar','▦'],['History','≋'],['Settings','⚙']].map(([name,icon])=><Pressable key={name} accessibilityRole="tab" accessibilityState={{selected:tab===name}} onPress={()=>{setTab(name);setMessage('')}} style={s.navItem}><Text style={[s.navIcon,tab===name&&s.activeText]}>{icon}</Text><Text style={[s.navLabel,tab===name&&s.activeText]}>{name}</Text></Pressable>)}</View></SafeAreaView>
+import {File, Paths} from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import TodayScreen from './src/TodayScreen';
+import LogEditor from './src/LogEditor';
+import ReportScreen from './src/ReportScreen';
+import {HealthScreen, LogDetails, months, OptionEditor, SettingsScreen, YearScreen, type OptionCategory} from './src/DiaryScreens';
+import {createLog, defaultOptions, logTitles, migrateEntries, parseDiary, parseOptions, saveLog, type DiaryOptions, type Log, type LogKind} from './src/diary';
+import {localDate, parseBackup} from './src/model';
+import {accent, RoundButton, Row, styles as ui, usePalette} from './src/ui';
+
+const DIARY_KEY = 'endo-companion-diary-v2';
+const OPTIONS_KEY = 'endo-companion-options-v2';
+const PREVIOUS_KEY = 'endo-companion-v1';
+
+const tabs = [['Today', '▦'], ['Year', '▤'], ['Health', '♡'], ['Settings', '⚙']] as const;
+type Tab = typeof tabs[number][0];
+type Screen = {kind: 'add' | 'month' | 'filter' | 'report' | 'appearance'}
+  | {kind: 'edit' | 'details'; log: Log}
+  | {kind: 'options'; category: OptionCategory};
+const choices: [LogKind, string][] = [
+  ['pain', 'Log Pain'], ['period', 'Log Period'], ['food', 'Log Food'],
+  ['bowel', 'Log Bowel Movement'], ['heat', 'Log Heating Pad'], ['tens', 'Log TENS'],
+];
+
+function parseImport(raw: string): Log[] {
+  const value: unknown = JSON.parse(raw);
+  if (value && typeof value === 'object' && 'logs' in value) {
+    return parseDiary(JSON.stringify(value.logs));
+  }
+  return migrateEntries(parseBackup(raw));
 }
-const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#faf7f4'},header:{paddingHorizontal:24,paddingVertical:18,flexDirection:'row',justifyContent:'space-between',alignItems:'center',borderBottomWidth:1,borderColor:'#ece5e1'},brand:{fontSize:21,fontWeight:'700',color:'#543c49'},tagline:{fontSize:12,color:'#80727a',marginTop:5},flower:{backgroundColor:'#f2e6e6',padding:10,borderRadius:24},content:{padding:22,paddingBottom:32,width:'100%',maxWidth:700,alignSelf:'center'},eyebrow:{fontSize:11,fontWeight:'700',letterSpacing:2,color:'#99717e',marginTop:12,marginBottom:12},heading:{fontSize:32,fontWeight:'700',letterSpacing:-1,color:'#43323e',marginBottom:10},body:{fontSize:15,lineHeight:23,color:'#756770'},dateRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10,marginVertical:8},date:{fontSize:15,fontWeight:'600',color:'#55424c'},card:{backgroundColor:'#fff',borderRadius:22,padding:20,marginTop:18,borderWidth:1,borderColor:'#eee6e3'},section:{fontSize:17,fontWeight:'600',color:'#4b3843',marginBottom:10},between:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:8},score:{fontSize:32,fontWeight:'700',color:'#b05b75'},wrap:{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:10},chip:{backgroundColor:'#f7f2ef',borderWidth:1,borderColor:'#e9e0dd',paddingHorizontal:13,paddingVertical:11,borderRadius:14,marginVertical:3,minWidth:38,alignItems:'center'},chipActive:{backgroundColor:'#f3dde4',borderColor:'#b6647c'},chipText:{color:'#6e5b65',fontSize:14},chipTextActive:{color:'#8f3e59',fontWeight:'700'},hint:{fontSize:12,lineHeight:19,color:'#8b7c84',marginTop:7},input:{backgroundColor:'#faf7f5',borderRadius:13,padding:14,fontSize:15,color:'#4b3843',minHeight:60,marginBottom:14,textAlignVertical:'top'},primary:{backgroundColor:'#a95670',padding:18,borderRadius:18,alignItems:'center',marginVertical:20},primaryText:{color:'#fff',fontSize:17,fontWeight:'600'},calendar:{flexDirection:'row',flexWrap:'wrap',marginVertical:16},day:{width:'14.285714%',height:49,alignItems:'center',justifyContent:'center',borderRadius:14},today:{backgroundColor:'#f3dde4'},dot:{height:5,width:5,borderRadius:3,marginTop:5},stats:{flexDirection:'row',gap:14,marginTop:18},stat:{flex:1,backgroundColor:'#f0e7e7',padding:22,borderRadius:22},painBadge:{color:'#a95670',backgroundColor:'#faedf1',padding:8,borderRadius:10,fontSize:12,fontWeight:'600'},nav:{flexDirection:'row',backgroundColor:'#fff',borderTopWidth:1,borderColor:'#eee5e1',paddingTop:10,paddingBottom:12},navItem:{flex:1,alignItems:'center',paddingVertical:5},navIcon:{fontSize:25,color:'#a99aa3'},navLabel:{fontSize:11,color:'#95858e',marginTop:3},activeText:{color:'#a34e69',fontWeight:'700'},footer:{textAlign:'center',fontSize:12,color:'#a48e98',marginTop:30},success:{color:'#446e52',backgroundColor:'#e9f1e8',padding:15,borderRadius:14,marginTop:16}});
+
+function flash(title: string, message: string) {
+  if (Platform.OS === 'web') globalThis.alert(`${title}\n${message}`);
+  else Alert.alert(title, message);
+}
+
+export default function App() {
+  const [logs, setLogs] = useState<Log[]>([]);
+  const [options, setOptions] = useState(defaultOptions);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [tab, setTab] = useState<Tab>('Today');
+  const [date, setDate] = useState(localDate);
+  const [month, setMonth] = useState(() => new Date());
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [screen, setScreen] = useState<Screen | null>(null);
+  const [filter, setFilter] = useState<LogKind[]>([]);
+  const [busy, setBusy] = useState(false);
+  const writing = useRef(false);
+  const colors = usePalette(options.theme);
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const raw = await AsyncStorage.getItem(DIARY_KEY);
+        const storedOptions = await AsyncStorage.getItem(OPTIONS_KEY);
+        const previous = raw === null ? await AsyncStorage.getItem(PREVIOUS_KEY) : null;
+        const loaded = raw !== null ? parseDiary(raw) : previous ? migrateEntries(parseBackup(previous)) : [];
+        if (!active) return;
+        setLogs(loaded);
+        if (storedOptions) setOptions(parseOptions(storedOptions));
+        setStatus('ready');
+      } catch {
+        if (active) setStatus('error');
+      }
+    }
+    void load();
+    return () => { active = false; };
+  }, []);
+
+  function selectDate(value: string) {
+    setDate(value);
+    setMonth(new Date(value + 'T12:00:00'));
+  }
+
+  function openMonth(selectedYear: number, selectedMonth: number) {
+    const first = new Date(selectedYear, selectedMonth, 1);
+    setMonth(first);
+    setDate(localDate(first) <= localDate() ? localDate(first) : localDate());
+    setScreen(null);
+    setTab('Today');
+  }
+
+  function openEditor(kind: LogKind) {
+    const existing = kind === 'note' && logs.find(log => log.kind === kind && log.date === date);
+    setScreen({kind: 'edit', log: existing || createLog(kind, date)});
+  }
+
+  async function persist(next: Log[]) {
+    if (writing.current) throw new Error('Diary is busy');
+    writing.current = true;
+    try {
+      await AsyncStorage.setItem(DIARY_KEY, JSON.stringify(next));
+      setLogs(next);
+    } finally {
+      writing.current = false;
+    }
+  }
+
+  async function commit(log: Log) {
+    await persist(saveLog(logs, log));
+    selectDate(log.date);
+    setTab('Today');
+    setScreen(null);
+  }
+
+  function remove(log: Log) {
+    async function discard() {
+      try {
+        await persist(logs.filter(item => item.id !== log.id));
+        setScreen(null);
+      } catch {
+        flash('Could not delete the log', 'Try again.');
+      }
+    }
+    if (Platform.OS === 'web') {
+      if (globalThis.confirm('Delete this log?')) void discard();
+    } else {
+      Alert.alert('Delete this log?', 'This cannot be undone.', [
+        {text: 'Cancel', style: 'cancel'},
+        {text: 'Delete', style: 'destructive', onPress: discard},
+      ]);
+    }
+  }
+
+  async function storeOptions(next: DiaryOptions) {
+    try {
+      await AsyncStorage.setItem(OPTIONS_KEY, JSON.stringify(next));
+      setOptions(next);
+    } catch {
+      flash('Could not save settings', 'Try again.');
+    }
+  }
+
+  async function backup() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const name = 'endolog-diary-' + localDate() + '.json';
+      const raw = JSON.stringify({version: 2, logs}, null, 2);
+      if (Platform.OS === 'web') {
+        const url = URL.createObjectURL(new Blob([raw], {type: 'application/json'}));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } else {
+        const file = new File(Paths.cache, name);
+        file.write(raw);
+        await Sharing.shareAsync(file.uri, {mimeType: 'application/json', UTI: 'public.json'});
+      }
+    } catch {
+      flash('Could not export the diary', 'Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restore() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const selected = await DocumentPicker.getDocumentAsync({type: 'application/json', copyToCacheDirectory: true});
+      if (selected.canceled) return;
+      const {uri} = selected.assets[0];
+      const raw = Platform.OS === 'web' ? await (await fetch(uri)).text() : await new File(uri).text();
+      const incoming = parseImport(raw);
+      await persist(incoming.reduce(saveLog, logs));
+      flash('Diary imported', `${incoming.length} logs imported.`);
+    } catch {
+      flash('Could not import the diary', 'Choose a valid diary backup and try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function close() { setScreen(null); }
+  function report() { setScreen({kind: 'report'}); }
+  function detail(log: Log) { setScreen({kind: 'details', log}); }
+
+  const pageStyle = [ui.safe, {backgroundColor: colors.bg}];
+  const dark = colors.bg === '#18181d';
+  const statusBar = <StatusBar style={dark ? 'light' : 'dark'} />;
+  if (status !== 'ready') return (
+    <SafeAreaView style={pageStyle}>{statusBar}
+      {status === 'loading' ? <ActivityIndicator accessibilityLabel="Loading diary" />
+        : <Text style={[ui.content, {color: colors.ink}]}>Could not open your saved diary. Restart the app and try again.</Text>}
+    </SafeAreaView>
+  );
+
+  if (screen?.kind === 'edit') return (
+    <SafeAreaView style={pageStyle}>{statusBar}
+      <LogEditor key={screen.log.id} log={screen.log} options={options} onSave={commit} onClose={close} />
+    </SafeAreaView>
+  );
+  if (screen?.kind === 'report') return (
+    <SafeAreaView style={pageStyle}>{statusBar}
+      <ReportScreen logs={logs} onClose={close} />
+    </SafeAreaView>
+  );
+  if (screen?.kind === 'details') {
+    const {log} = screen;
+    return <SafeAreaView style={pageStyle}>{statusBar}
+      <View style={styles.back}><RoundButton label="Back" icon="‹" onPress={close} colors={colors} /></View>
+      <LogDetails log={log} colors={colors} edit={() => setScreen({kind: 'edit', log})} remove={() => remove(log)} />
+    </SafeAreaView>;
+  }
+
+  if (screen) return (
+    <SafeAreaView style={pageStyle}>{statusBar}
+      <View style={styles.back}><RoundButton label="Back" icon="‹" onPress={close} colors={colors} /></View>
+      <ScrollView keyboardShouldPersistTaps="handled">
+        {screen.kind === 'options' && <OptionEditor category={screen.category} items={options[screen.category]} colors={colors}
+          onChange={items => storeOptions({...options, [screen.category]: items})} />}
+        {screen.kind === 'appearance' && <View style={ui.content}>
+          <Text style={[ui.heading, {color: colors.ink}]}>Appearance</Text>
+          <View style={[ui.card, {backgroundColor: colors.card}]}>
+            {(['system', 'light', 'dark'] as const).map(theme =>
+              <Row key={theme} label={theme[0].toUpperCase() + theme.slice(1)} value={options.theme === theme ? '✓' : undefined}
+                colors={colors} onPress={() => storeOptions({...options, theme})} />
+            )}
+          </View>
+        </View>}
+        {screen.kind === 'add' && <View style={ui.content}>
+          <Text style={[ui.heading, {color: colors.ink}]}>Add Log</Text>
+          <View style={[ui.card, {backgroundColor: colors.card}]}>
+            {choices.map(([kind, label]) => <Row key={kind} label={label} colors={colors} onPress={() => openEditor(kind)} />)}
+            <Row label="Daily Note" colors={colors} onPress={() => openEditor('note')} />
+          </View>
+        </View>}
+        {screen.kind === 'month' && <View style={ui.content}>
+          <View style={ui.split}>
+            <RoundButton label="Previous year" icon="‹" onPress={() => setYear(year - 1)} colors={colors} />
+            <Text style={[ui.heading, {color: colors.ink}]}>{year}</Text>
+            <RoundButton label="Next year" icon="›" onPress={() => setYear(year + 1)} colors={colors} />
+          </View>
+          <View style={[ui.card, {backgroundColor: colors.card}]}>
+            {months.map((name, index) => <Row key={name} label={name} colors={colors} onPress={() => openMonth(year, index)} />)}
+          </View>
+        </View>}
+        {screen.kind === 'filter' && <View style={ui.content}>
+          <Text style={[ui.heading, {color: colors.ink}]}>Filter Logs</Text>
+          <View style={[ui.card, {backgroundColor: colors.card}]}>
+            <Row label="All logs" colors={colors} value={filter.length ? undefined : '✓'} onPress={() => setFilter([])} />
+            {(Object.keys(logTitles) as LogKind[]).map(kind =>
+              <Row key={kind} label={logTitles[kind]} colors={colors} value={filter.includes(kind) ? '✓' : undefined}
+                onPress={() => setFilter(current => current.includes(kind) ? current.filter(item => item !== kind) : [...current, kind])} />
+            )}
+          </View>
+          <Pressable accessibilityRole="button" style={ui.button} onPress={close}><Text style={ui.buttonText}>Done</Text></Pressable>
+        </View>}
+      </ScrollView>
+    </SafeAreaView>
+  );
+
+  return (
+    <SafeAreaView style={pageStyle}>{statusBar}
+      <ScrollView style={ui.flex} contentContainerStyle={styles.content}>
+        {tab === 'Today' && <TodayScreen date={date} logs={logs} visibleKinds={filter} month={month} colors={colors}
+          selectDate={selectDate} openMonth={() => { setYear(month.getFullYear()); setScreen({kind: 'month'}); }}
+          openReport={report} addLog={() => setScreen({kind: 'add'})} openNote={() => openEditor('note')}
+          openLog={detail} openFilter={() => setScreen({kind: 'filter'})} />}
+        {tab === 'Year' && <YearScreen year={year} logs={logs} colors={colors} changeYear={setYear} openMonth={openMonth} />}
+        {tab === 'Health' && <HealthScreen logs={logs} colors={colors} openReport={report} openLog={detail} />}
+        {tab === 'Settings' && <SettingsScreen options={options} colors={colors} openReport={report} backup={backup} restore={restore}
+          showOptions={category => setScreen({kind: 'options', category})} showAppearance={() => setScreen({kind: 'appearance'})} />}
+      </ScrollView>
+      <View style={[styles.tabs, {backgroundColor: colors.card, borderColor: colors.edge}]}>
+        {tabs.map(([name, icon]) => (
+          <Pressable key={name} accessibilityRole="tab" accessibilityState={{selected: name === tab}}
+            style={[styles.tab, name === tab && {backgroundColor: colors.edge}]} onPress={() => setTab(name)}>
+            <Text style={[styles.tabIcon, {color: name === tab ? accent : colors.ink}]}>{icon}</Text>
+            <Text style={[styles.tabText, {color: name === tab ? accent : colors.ink}]}>{name}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: {flexGrow: 1, width: '100%', maxWidth: 700, alignSelf: 'center'},
+  back: {paddingHorizontal: 16, paddingVertical: 8, alignSelf: 'flex-start'},
+  tabs: {marginHorizontal: 20, marginVertical: 6, borderRadius: 40, borderWidth: 1, padding: 3, flexDirection: 'row'},
+  tab: {flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 34, paddingVertical: 6, minHeight: 48},
+  tabIcon: {fontSize: 23, lineHeight: 25, fontWeight: '600'},
+  tabText: {fontSize: 11, fontWeight: '600', paddingTop: 2},
+});
