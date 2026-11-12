@@ -215,7 +215,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
 
   function stopSession() {
     if (sessionStart === null) return;
-    const minutes = Math.max(1, Math.ceil((Date.now() - sessionStart) / 60_000));
+    const minutes = Math.max(1, Math.ceil(sessionSeconds / 60));
     setField('duration', String(minutes));
     setSessionStart(null);
   }
