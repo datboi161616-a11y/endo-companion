@@ -2,7 +2,10 @@ import React from 'react';
 import {Pressable, StyleSheet, Text, View} from 'react-native';
 import {calendarDates, localDate} from './model';
 import {logTitles, type Log, type LogKind} from './diary';
-import {accent, RoundButton, styles as ui, type Palette} from './ui';
+import Svg, {Circle} from 'react-native-svg';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import {useTranslation} from './i18n';
+import {accent, Icon, RoundButton, styles as ui, type Palette} from './ui';
 
 const painColors = ['#268853', '#4b9851', '#7fad42', '#afcb39', '#efc348', '#e8a03b',
   '#f18a2b', '#ed6228', '#e54c37', '#e43d46', '#c92746'];
@@ -20,27 +23,20 @@ export function dayIntensity(logs: Log[], date: string) {
 }
 
 function DayRing({pain, flow, colors}: {pain: number; flow: boolean; colors: Palette}) {
-  if (pain === 0 && !flow) return null;
   const color = flow ? accent : painColors[pain];
-  const angle = (pain || 10) * 36;
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <View style={styles.rightHalf}>
-        <View style={[styles.ringFill, {right: 0, borderTopColor: color, borderLeftColor: color,
-          transform: [{rotate: (Math.min(angle, 180) - 45) + 'deg'}]}]} />
-      </View>
-      {angle > 180 && (
-        <View style={styles.leftHalf}>
-          <View style={[styles.ringFill, {left: 0, borderTopColor: color, borderLeftColor: color,
-            transform: [{rotate: (angle - 45) + 'deg'}]}]} />
-        </View>
-      )}
-      <View style={[styles.ringCenter, {backgroundColor: colors.bg}]} />
-    </View>
-  );
+  const circumference = 2 * Math.PI * 17.5;
+  const fraction = flow ? 1 : pain / 10;
+  return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <Svg width={40} height={40} viewBox="0 0 40 40">
+      <Circle cx={20} cy={20} r={17.5} fill={colors.bg} stroke={colors.edge} strokeWidth={5} />
+      {fraction > 0 && <Circle cx={20} cy={20} r={17.5} fill="none" stroke={color} strokeWidth={5}
+        strokeLinecap="round" strokeDasharray={`${circumference * fraction} ${circumference}`}
+        rotation={-90} origin="20,20" />}
+    </Svg>
+  </View>;
 }
 
-const kindIcons: Record<LogKind, string> = {pain: '⚡', food: '🍎', bowel: '●', period: '💧', heat: '♨', tens: 'ϟ', note: '✎'};
+const kindIcons = {pain: 'flash-outline', food: 'nutrition-outline', bowel: 'ellipse-outline', period: 'water', heat: 'sunny-outline', tens: 'flash-outline', note: 'create-outline'} as const;
 
 export function logSummary(log: Log) {
   const value = log.fields.locations ?? log.fields.foods ?? log.fields.flow ?? log.fields.bristolType
@@ -53,10 +49,11 @@ export default function TodayScreen({date, logs, visibleKinds, month, colors, se
   selectDate: (date: string) => void; openMonth: () => void; openNote: () => void;
   openReport: () => void; openLog: (log: Log) => void; openFilter: () => void;
 }) {
+  const {t, language} = useTranslation();
   const today = localDate();
   const selected = logs.filter(log => log.date === date && (!visibleKinds.length || visibleKinds.includes(log.kind)));
   const dates = calendarDates(month.getFullYear(), month.getMonth());
-  const heading = date === today ? 'Today' : new Date(date + 'T12:00:00').toLocaleDateString(undefined, {
+  const heading = date === today ? t('Today') : new Date(date + 'T12:00:00').toLocaleDateString(language, {
     weekday: 'long', month: 'short', day: 'numeric',
   });
 
@@ -70,11 +67,11 @@ export default function TodayScreen({date, logs, visibleKinds, month, colors, se
         </View>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel="Choose a month" onPress={openMonth} style={styles.month}>
-        <Text style={[styles.monthText, {color: colors.ink}]}>{month.toLocaleDateString(undefined, {month: 'long', year: 'numeric'})}</Text>
-        <Text style={{color: colors.muted, fontSize: 21}}>⌄</Text>
+        <Text style={[styles.monthText, {color: colors.ink}]}>{month.toLocaleDateString(language, {month: 'long', year: 'numeric'})}</Text>
+        <Icon symbol="⌄" color={colors.muted} size={21} />
       </Pressable>
       <View style={styles.grid}>
-        {weekdays.map(day => <Text key={day} style={[styles.weekday, {color: colors.muted}]}>{day}</Text>)}
+        {weekdays.map(day => <Text key={day} style={[styles.weekday, {color: colors.muted}]}>{new Date(2026, 10, 1 + weekdays.indexOf(day)).toLocaleDateString(language, {weekday: 'short'})}</Text>)}
         {dates.map(day => {
           const pain = dayIntensity(logs, day);
           const flow = logs.some(log => log.date === day && log.kind === 'period' && !['No Flow', 'None', ''].includes(String(log.fields.flow ?? '')));
@@ -108,14 +105,14 @@ export default function TodayScreen({date, logs, visibleKinds, month, colors, se
           <Pressable key={log.id} accessibilityRole="button" onPress={() => openLog(log)}
             style={[styles.entry, {backgroundColor: colors.card, borderColor: colors.edge}]}>
             <View style={[styles.score, {backgroundColor: log.kind === 'pain' ? painColors[score] : colors.bg}]}>
-              <Text style={[styles.scoreText, {color: log.kind === 'pain' ? '#342713' : colors.ink}]}>{log.kind === 'pain' ? score : kindIcons[log.kind]}</Text>
+              <>{log.kind === 'pain' ? <Text style={[styles.scoreText, {color: '#342713'}]}>{score}</Text> : <Ionicons name={kindIcons[log.kind]} size={25} color={log.kind === 'period' ? accent : colors.ink} />}</>
             </View>
             <View style={styles.entryContent}>
               <Text style={{color: colors.muted, fontWeight: '600'}}>{logTime(log.time)}</Text>
-              <Text style={[styles.entryTitle, {color: colors.ink}]}>{logTitles[log.kind]}</Text>
+              <Text style={[styles.entryTitle, {color: colors.ink}]}>{t(logTitles[log.kind])}</Text>
               {!!summary && <Text numberOfLines={1} style={[styles.entryTag, {color: colors.ink, backgroundColor: colors.bg}]}>{summary}</Text>}
             </View>
-            <Text style={{fontSize: 25, color: colors.muted}}>›</Text>
+            <Icon symbol="›" size={23} color={colors.muted} />
           </Pressable>
         );
       })}

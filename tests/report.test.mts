@@ -32,3 +32,46 @@ test('PDF paginates long reports, escapes content, and records valid cross-refer
     assert.ok(pdf.slice(objectOffset).startsWith(`${index + 1} 0 obj`));
   }
 });
+
+test('daily means, symptom days and explicit period comparisons do not overweight repeated entries', () => {
+  const sections = buildReport([
+    { ...pain, fields: { intensity: 8, symptoms: ['Fatigue'] } },
+    { ...pain, id: '2', fields: { intensity: 4, symptoms: ['Fatigue'] } },
+    { ...pain, id: '3', date: '2026-11-11', fields: { intensity: 2 } },
+    { ...pain, id: '4', kind: 'period', fields: { flow: 'Heavy' } },
+  ], { start: '', end: '' }, titles, { name: 'Zoë 李', dob: '1995-04-03' });
+  assert.deepEqual(sections[0].trend, [{ date: '2026-11-10', pain: 6, period: true }, { date: '2026-11-11', pain: 2, period: false }]);
+  assert.match(JSON.stringify(sections), /Fatigue: 1 days; same-day average pain 6\/10/);
+  assert.match(JSON.stringify(sections), /logged period days: 6\/10/);
+  assert.equal(sections[3].blocks[0].heading?.startsWith('2026-11-11'), true);
+});
+
+test('HTML report preserves Unicode, escapes patient text, and leaves missing scores absent', async () => {
+  const { createReportHtml } = await import('../src/report.ts');
+  const sections = buildReport([{ ...pain, fields: { intensity: '' } }], { start: '', end: '' }, titles, { name: '<script>李</script>', dob: '' });
+  const html = createReportHtml(sections);
+  assert.match(html, /&lt;script&gt;李&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /<script>/);
+  assert.match(html, /No pain scores recorded/);
+  assert.deepEqual(sections[0].trend, []);
+});
+
+test('report groups same-day logs into four columns and shows recorded location percentages', async () => {
+  const { createReportHtml } = await import('../src/report.ts');
+  const sections = buildReport([pain, { ...pain, id: 'food', kind: 'food', fields: { foods: ['Rice'] }, notes: '' }], { start: '', end: '' }, titles);
+  assert.equal(sections[3].dailyRows?.length, 1);
+  assert.match(sections[3].dailyRows![0].pain.join(' '), /Intensity: 7\/10/);
+  assert.match(sections[3].dailyRows![0].tracking.join(' '), /Rice/);
+  assert.match(sections[3].dailyRows![0].relief.join(' '), /Test \(notes\)/);
+  const html = createReportHtml(sections);
+  assert.match(html, /<th>Pain and symptoms<\/th><th>Other tracking<\/th><th>Relief and notes<\/th>/);
+  assert.match(html, /Pelvis <strong>100%<\/strong>/);
+  assert.match(html, /Percentage of distinct days with pain tracking/);
+  assert.doesNotMatch(html, /silhouettes|<path/);
+});
+
+
+test('location percentages count distinct pain-tracked days rather than entries', () => {
+  const sections = buildReport([pain, { ...pain, id: 'duplicate' }, { ...pain, id: 'next', date: '2026-11-11', fields: { intensity: 3 } }], { start: '', end: '' }, titles);
+  assert.deepEqual(sections[2].locations, [{ name: 'Pelvis', days: 1, percent: 50 }]);
+});

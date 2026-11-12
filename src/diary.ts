@@ -18,6 +18,7 @@ export type Log = {
   fields: Record<string, string | number | string[]>;
   notes: string;
   attachment?: string;
+  voiceNote?: string;
 };
 
 export type DiaryOptions = {
@@ -27,6 +28,10 @@ export type DiaryOptions = {
   medications: string[];
   food: string[];
   theme: 'system' | 'light' | 'dark';
+  language: string;
+  bowelDescriptors: string[];
+  showStoolImages: boolean;
+  showStoolTypeBadge: boolean;
 };
 
 export const defaultOptions: DiaryOptions = {
@@ -36,6 +41,10 @@ export const defaultOptions: DiaryOptions = {
   medications: [],
   food: ['Fast Food', 'Soda', 'Vegetables', 'Chicken', 'Dairy', 'Fruit', 'Grains', 'Coffee'],
   theme: 'system',
+  language: 'en',
+  bowelDescriptors: ['Cramping', 'Sharp', 'Burning', 'Pressure', 'Straining', 'Incomplete evacuation'],
+  showStoolImages: true,
+  showStoolTypeBadge: true,
 };
 
 export function isLocalDate(date: string) {
@@ -67,6 +76,7 @@ function isLog(value: unknown): value is Log {
     && typeof log.time === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(log.time)
     && typeof log.notes === 'string'
     && (log.attachment === undefined || typeof log.attachment === 'string')
+    && (log.voiceNote === undefined || typeof log.voiceNote === 'string')
     && !!log.fields && typeof log.fields === 'object' && !Array.isArray(log.fields)
     && Object.values(log.fields).every(field =>
       typeof field === 'string' || (typeof field === 'number' && Number.isFinite(field))
@@ -84,12 +94,16 @@ export function parseDiary(raw: string): Log[] {
 
 export function parseOptions(raw: string): DiaryOptions {
   const value = JSON.parse(raw) as Partial<DiaryOptions>;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid settings');
   const result = {...defaultOptions};
-  for (const key of ['locations', 'descriptors', 'symptoms', 'medications', 'food'] as const) {
+  for (const key of ['locations', 'descriptors', 'symptoms', 'medications', 'food', 'bowelDescriptors'] as const) {
     const list = value[key];
     if (Array.isArray(list) && list.every(item => typeof item === 'string')) result[key] = list;
   }
   if (value.theme === 'dark' || value.theme === 'light') result.theme = value.theme;
+  if (typeof value.language === 'string' && /^[a-z]{2}(-[A-Z]{2})?$/.test(value.language)) result.language = value.language;
+  if (typeof value.showStoolImages === 'boolean') result.showStoolImages = value.showStoolImages;
+  if (typeof value.showStoolTypeBadge === 'boolean') result.showStoolTypeBadge = value.showStoolTypeBadge;
   return result;
 }
 

@@ -10,9 +10,9 @@ Use the unsigned IPA from the **Build Sideloadly IPA** GitHub Actions workflow. 
 
 The Today calendar shows the selected day's logs. You can create multiple entries per day, edit or delete entries, and filter the list by type. The Year view shows pain and period activity by month. The Health view summarizes the last 30 days.
 
-Log pain, period flow, food and reactions, bowel movements, heating pad sessions, TENS sessions, and daily notes. A food entry can include a photo selected from Files. Customize pain locations, descriptors, symptoms, food, and medications in Settings.
+Log pain, period flow, food and reactions, bowel movements, heating pad sessions, TENS sessions, and daily notes. A food entry can include a photo selected from Files. Notes can include an on-device voice recording. Pain logging has an interactive body map and slider. Heating pad and TENS sessions have live timers. Customize pain locations, descriptors, symptoms, food, medications, bowel descriptors, stool images, and type badges in Settings. Choose English, Spanish, French, German, Italian, or Portuguese. Local daily and medication reminders request notification permission when enabled.
 
-The PDF report contains a date-filtered summary and daily entries. Use Settings to export or import a JSON diary backup. Imports merge by entry ID. Logs from the previous Endo Companion build load automatically when the new diary has no saved data. JSON backups and PDF reports contain the data you choose to export.
+The PDF report contains a date-filtered summary, pain chart, location map, and daily entries. Native PDF rendering supports Unicode patient names and notes. Browser export uses Print / Save PDF. Use Settings to export or import a JSON diary backup. Imports merge by entry ID. Logs from the previous Endo Companion build load automatically when the new diary has no saved data. JSON backups and PDF reports contain the data you choose to export.
 
 ## Develop
 

@@ -1,6 +1,19 @@
 import React from 'react';
 import {Pressable, StyleSheet, Text, View, useColorScheme} from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import {useTranslation} from './i18n';
 import type {DiaryOptions} from './diary';
+
+const iconNames = {
+  '▦': 'calendar-outline', '▤': 'apps-outline', '♡': 'heart-outline', '⚙': 'settings-outline',
+  '↗': 'share-social-outline', '✎': 'create-outline', '☷': 'options-outline',
+  '‹': 'chevron-back', '›': 'chevron-forward', '+': 'add', '×': 'close', '⌄': 'chevron-down',
+} as const;
+
+export function Icon({symbol, size = 22, color}: {symbol: string; size?: number; color: string}) {
+  const name = iconNames[symbol as keyof typeof iconNames] ?? 'ellipse-outline';
+  return <Ionicons name={name} size={size} color={color} />;
+}
 
 export const accent = '#ef416e';
 export const light = {bg: '#f0f0f5', card: '#ffffff', ink: '#111b22', muted: '#85858e', edge: '#dcdce2'};
@@ -20,10 +33,11 @@ export function RoundButton({label, icon, onPress, colors, highlighted = false}:
   colors: Palette;
   highlighted?: boolean;
 }) {
+  const {t} = useTranslation();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
+    <Pressable accessibilityRole="button" accessibilityLabel={t(label)} onPress={onPress}
       style={[styles.round, {backgroundColor: colors.card, borderColor: colors.edge}]}>
-      <Text style={[styles.symbol, {color: highlighted ? accent : colors.muted}]}>{icon}</Text>
+      <Icon symbol={icon} color={highlighted ? accent : colors.muted} />
     </Pressable>
   );
 }
@@ -31,12 +45,13 @@ export function RoundButton({label, icon, onPress, colors, highlighted = false}:
 export function Row({label, value, onPress, colors, danger = false}: {
   label: string; value?: string; onPress?: () => void; colors: Palette; danger?: boolean;
 }) {
-  const content = <><Text style={[styles.rowLabel, {color: danger ? accent : colors.ink}]}>{label}</Text>
+  const {t} = useTranslation();
+  const content = <><Text style={[styles.rowLabel, {color: danger ? accent : colors.ink}]}>{t(label)}</Text>
     {!!value && <Text style={{color: colors.muted, flexShrink: 1, textAlign: 'right'}}>{value}</Text>}
     {!!onPress && <Text style={{color: colors.muted, fontSize: 22}}>›</Text>}</>;
   const rowStyle = [styles.row, {borderBottomColor: colors.edge}];
   return onPress
-    ? <Pressable style={rowStyle} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>{content}</Pressable>
+    ? <Pressable style={rowStyle} onPress={onPress} accessibilityRole="button" accessibilityLabel={t(label)}>{content}</Pressable>
     : <View style={rowStyle}>{content}</View>;
 }
 

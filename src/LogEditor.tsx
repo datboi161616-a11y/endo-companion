@@ -3,6 +3,12 @@ import {
   Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, View, useColorScheme,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
+import {LinearGradient} from 'expo-linear-gradient';
+import {useTranslation} from './i18n';
+import BodyMap from './BodyMap';
+import {bodyRegions} from './bodyRegions';
+import VoiceNote from './VoiceNote';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import { isLocalDate, localTime, logTitles, type DiaryOptions, type Log } from './diary';
@@ -26,16 +32,17 @@ const painDescriptions = [
   'Makes it difficult to concentrate or sleep', 'Physical activity severely limited',
   'Unable to do most activities', 'Worst pain imaginable',
 ];
-const painColors = ['#25825d', '#2d9561', '#639e38', '#98b42d', '#d8b735', '#eda52b', '#f58b21', '#ec651e', '#e44430', '#d82a32', '#b92635'];
+const painColors = ['#25825d', '#2d9561', '#639e38', '#b7d239', '#d8b735', '#eda52b', '#f58b21', '#ec651e', '#e44430', '#d82a32', '#b92635'];
 const bristolOptions = [
-  ['Severe constipation', 'Separate hard lumps', '•••'],
-  ['Mild constipation', 'Lumpy sausage', '●●'],
-  ['Normal', 'Sausage with surface cracks', '▬'],
-  ['Normal', 'Smooth, soft snake', '━'],
-  ['Lacking fibre', 'Soft blobs with clear edges', '••'],
-  ['Diarrhea', 'Fluffy pieces, mushy', '≈'],
-  ['Severe diarrhea', 'Watery, no solid pieces', '≋'],
+  ['Severe constipation', 'Separate hard lumps'],
+  ['Mild constipation', 'Lumpy sausage'],
+  ['Normal', 'Sausage with surface cracks'],
+  ['Normal', 'Smooth, soft snake'],
+  ['Lacking fibre', 'Soft blobs with clear edges'],
+  ['Diarrhea', 'Fluffy pieces, mushy'],
+  ['Severe diarrhea', 'Watery, no solid pieces'],
 ];
+const stoolImages = [require('../assets/body/stool-1.png'), require('../assets/body/stool-2.png'), require('../assets/body/stool-3.png'), require('../assets/body/stool-4.png'), require('../assets/body/stool-5.png'), require('../assets/body/stool-6.png'), require('../assets/body/stool-7.png')];
 const timeOptions = ['Morning', 'Afternoon', 'Evening', 'Night'];
 
 export default function LogEditor({ log, options, onSave, onClose }: {
@@ -44,11 +51,13 @@ export default function LogEditor({ log, options, onSave, onClose }: {
   onSave: (log: Log) => Promise<void>;
   onClose: () => void;
 }) {
+  const {t} = useTranslation();
   const [draft, setDraft] = useState(log);
   const [step, setStep] = useState(0);
   const [editingDate, setEditingDate] = useState(false);
   const [showScale, setShowScale] = useState(false);
   const [error, setError] = useState('');
+  const [voiceBusy, setVoiceBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveLock = useRef(false);
   const [sessionStart, setSessionStart] = useState<number | null>(null);
@@ -77,14 +86,14 @@ export default function LogEditor({ log, options, onSave, onClose }: {
     setError('');
   }
 
-  function setMeta<K extends 'date' | 'time' | 'notes' | 'attachment'>(key: K, value: Log[K]) {
+  function setMeta<K extends 'date' | 'time' | 'notes' | 'attachment' | 'voiceNote'>(key: K, value: Log[K]) {
     setDraft(current => ({ ...current, [key]: value }));
     setError('');
   }
 
   function card(label: string, children: ReactNode) {
     return <View style={[styles.card, { backgroundColor: colors.card }]}>
-      <Text style={[styles.label, { color: colors.muted }]}>{label}</Text>
+      <Text style={[styles.label, { color: colors.muted }]}>{t(label)}</Text>
       {children}
     </View>;
   }
@@ -93,7 +102,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
     return <TextInput
       accessibilityLabel={label}
       style={[styles.input, multiline && styles.multiline, { color: colors.ink, backgroundColor: colors.well }]}
-      placeholder={label}
+      placeholder={t(label)}
       placeholderTextColor={colors.muted}
       value={value}
       onChangeText={onChangeText}
@@ -105,7 +114,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
 
   function button(label: string, action: () => void) {
     return <Pressable accessibilityRole="button" onPress={action} style={[styles.chip, { backgroundColor: colors.well }]}>
-      <Text style={[styles.buttonText, { color: colors.ink }]}>{label}</Text>
+      <Text style={[styles.buttonText, { color: colors.ink }]}>{t(label)}</Text>
     </Pressable>;
   }
 
@@ -122,7 +131,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
             : active ? '' : value)}
           style={[styles.chip, rows && styles.choiceRow, { backgroundColor: active ? selectedColor : colors.well }]}>
           <Text style={[styles.buttonText, { color: active ? selectedText : colors.ink }]}>
-            {key === 'flow' ? (value === 'No Flow' ? '⊖   ' : '♦   ') : ''}{value}
+            {key === 'flow' ? (value === 'No Flow' ? '⊖   ' : '♦   ') : ''}{t(value)}
           </Text>
         </Pressable>;
       })}
@@ -141,10 +150,11 @@ export default function LogEditor({ log, options, onSave, onClose }: {
   }
 
   function notes() {
-    return card('Add note', input('Add any additional notes…', draft.notes, value => setMeta('notes', value), true));
+    return card('Add note', <>{input('Add any additional notes…', draft.notes, value => setMeta('notes', value), true)}<VoiceNote onBusyChange={setVoiceBusy} value={draft.voiceNote} onChange={value => setMeta('voiceNote', value)} colors={colors} /></>);
   }
 
   async function addPhoto() {
+    if (voiceBusy) return;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'image/*', copyToCacheDirectory: true, base64: Platform.OS === 'web',
@@ -167,18 +177,17 @@ export default function LogEditor({ log, options, onSave, onClose }: {
     const value = typeof fields.intensity === 'number' ? Math.min(10, Math.max(0, Math.round(fields.intensity))) : 0;
     return <View style={styles.scale}>
       <View style={[styles.circle, { backgroundColor: painColors[value] }]}><Text style={styles.score}>{value}</Text></View>
-      <Text style={[styles.scaleDescription, { color: colors.ink }]}>{painDescriptions[value]}</Text>
-      <View style={styles.scaleBar}>
-        {painColors.map((color, score) => <Pressable key={color}
-          accessibilityRole="button" accessibilityLabel={'Pain ' + score + ' of 10'}
-          accessibilityState={{ selected: score === value }}
-          style={[styles.scaleCell, { backgroundColor: color }, score === value && styles.activeScore]}
-          onPress={() => setField('intensity', score)}
-        ><Text style={styles.scaleNumber}>{score}</Text></Pressable>)}
+      <View style={[styles.spread, {alignSelf: 'stretch', marginTop: 4}]}>
+        {['Mild', 'Moderate', 'High', 'Severe'].map(label => <Text key={label} style={styles.severity}>{t(label)}</Text>)}
       </View>
+      <LinearGradient colors={['#2a995f', '#e9cb43', '#f38a21', '#df3442']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.scaleBar} />
+      <Text style={[styles.scaleDescription, { color: colors.ink }]}>{t(painDescriptions[value])}</Text>
+      <Slider style={{width: '100%', height: 44}} minimumValue={0} maximumValue={10} step={1} value={value}
+        onValueChange={score => setField('intensity', score)} minimumTrackTintColor="#e2f4b7" maximumTrackTintColor="#d2eb91"
+        thumbTintColor="#ffffff" accessibilityLabel="Pain intensity" accessibilityValue={{min: 0, max: 10, now: value, text: value + ' out of 10'}} />
       <View style={[styles.spread, { alignSelf: 'stretch' }]}>
-        <Text style={[styles.label, { color: colors.ink }]}>Normal</Text>
-        <Text style={[styles.label, { color: colors.ink }]}>Very painful</Text>
+        <Text style={[styles.label, { color: colors.ink }]}>{t('Normal')}</Text>
+        <Text style={[styles.label, { color: colors.ink }]}>{t('Very painful')}</Text>
       </View>
       {button('View pain scale', () => setShowScale(true))}
     </View>;
@@ -186,19 +195,19 @@ export default function LogEditor({ log, options, onSave, onClose }: {
 
   function bristol() {
     return card('Bristol stool type', <View style={styles.stack}>
-      {bristolOptions.map(([label, description, glyph], index) => {
+      {bristolOptions.map(([label, description], index) => {
         const active = String(fields.bristolType) === String(index + 1);
         return <Pressable key={index} accessibilityRole="button" accessibilityState={{ selected: active }}
           accessibilityLabel={['Type ' + (index + 1), label, description].join(', ')}
           onPress={() => setField('bristolType', index + 1)}
           style={[styles.bristol, { backgroundColor: active ? selectedColor : colors.well }]}>
-          <Text style={styles.bristolIcon}>{glyph}</Text>
+          {options.showStoolImages && <Image source={stoolImages[index]} style={styles.bristolImage} accessibilityLabel={description} />}
           <View style={styles.flex}>
             <View style={[styles.row, styles.wrap]}>
-              <Text style={[styles.buttonText, { color: active ? selectedText : colors.ink }]}>{label}</Text>
-              <Text style={[styles.typeTag, { backgroundColor: index === 2 || index === 3 ? '#dcf4d9' : '#f9dedb' }]}>Type {index + 1}</Text>
+              <Text style={[styles.buttonText, { color: active ? selectedText : colors.ink }]}>{t(label)}</Text>
+              {options.showStoolTypeBadge && <Text style={[styles.typeTag, { backgroundColor: index === 2 || index === 3 ? '#dcf4d9' : '#f9dedb' }]}>Type {index + 1}</Text>}
             </View>
-            <Text style={{ color: active ? selectedText : colors.muted }}>{description}</Text>
+            <Text style={{ color: active ? selectedText : colors.muted }}>{t(description)}</Text>
           </View>
         </Pressable>;
       })}
@@ -234,7 +243,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
       case 'pain':
         return [
           () => choices('timeOfDay', 'Time of day', timeOptions),
-          () => choices('locations', 'Pain locations', options.locations, true),
+          () => <><BodyMap selected={Array.isArray(fields.locations) ? fields.locations : typeof fields.locations === 'string' ? [fields.locations] : []} onChange={value => setField('locations', value)} colors={colors} />{choices('locations', 'Other pain locations', options.locations.filter(location => !bodyRegions.some(region => region.name === location)), true)}</>,
           () => choices('descriptors', 'Pain descriptors', options.descriptors, true),
           painScale,
           () => choices('symptoms', 'Symptoms', options.symptoms, true),
@@ -257,7 +266,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
             {choices('symptoms', 'Symptoms', options.symptoms, true)}{notes()}</>,
         ][step]();
       case 'bowel':
-        return <>{bristol()}{choices('urgency', 'Urgency', ['None', 'Mild', 'Moderate', 'Urgent'])}
+        return <>{bristol()}{choices('descriptors', 'Details', options.bowelDescriptors, true)}{choices('urgency', 'Urgency', ['None', 'Mild', 'Moderate', 'Urgent'])}
           {choices('pain', 'Pain', ['None', 'Mild', 'Moderate', 'Severe'])}{notes()}</>;
       case 'period':
         return <>{choices('flow', 'Flow level', ['No Flow', 'Spotting', 'Light', 'Medium', 'Heavy'], false, true)}{notes()}</>;
@@ -277,6 +286,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
   }
 
   async function next() {
+    if (voiceBusy) return;
     if (!last) {
       if (kind === 'pain' && step === 3 && fields.intensity === undefined) setField('intensity', 0);
       setStep(step + 1);
@@ -301,7 +311,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
       setError('Enter a whole number of minutes greater than zero.');
       return;
     }
-    if (kind === 'note' && !draft.notes.trim()) {
+    if (kind === 'note' && !draft.notes.trim() && !draft.voiceNote) {
       setError('Add a note to save this entry.');
       return;
     }
@@ -320,48 +330,49 @@ export default function LogEditor({ log, options, onSave, onClose }: {
   }
 
   return <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    style={[styles.flex, { backgroundColor: colors.canvas }, green && !dark && styles.gradient]}>
+    style={[styles.flex, { backgroundColor: colors.canvas }]}>
+    {green && !dark && <LinearGradient colors={['#effbd3', '#d8f79b', '#a5df30']} style={StyleSheet.absoluteFill} />}
     <View style={styles.editor}>
       <View style={styles.toolbar}>
         {step > 0
-          ? <Pressable accessibilityRole="button" accessibilityLabel="Previous step" style={[styles.round, { backgroundColor: colors.card }]}
+          ? <Pressable accessibilityRole="button" accessibilityLabel="Previous step" disabled={voiceBusy} style={[styles.round, { backgroundColor: colors.card }]}
               onPress={() => { setStep(step - 1); setError(''); }}>
               <Text style={[styles.toolbarIcon, { color: colors.ink }]}>‹</Text>
             </Pressable>
           : <View style={styles.round} />}
-        <Pressable accessibilityRole="button" accessibilityLabel="Edit date and time" style={[styles.chip, { backgroundColor: colors.card }]}
+        <Pressable accessibilityRole="button" accessibilityLabel="Edit date and time" disabled={voiceBusy} style={[styles.chip, { backgroundColor: colors.card }]}
           onPress={() => setEditingDate(value => !value)}>
           <Text style={[styles.buttonText, { color: colors.ink }]}>{draft.date}  ·  {draft.time}  ⌄</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Close editor" style={[styles.round, { backgroundColor: colors.card }]}
-          disabled={saving || sessionStart !== null} onPress={onClose}>
+          disabled={saving || voiceBusy || sessionStart !== null} onPress={onClose}>
           <Text style={[styles.toolbarIcon, { color: colors.ink }]}>×</Text>
         </Pressable>
       </View>
       <ScrollView key={step} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         {editingDate && dateTime()}
         {pages.length > 1 && <Text style={[styles.progress, { color: colors.ink }]}>{logTitles[kind]} · {step + 1} of {pages.length}</Text>}
-        <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>{pages[step]}</Text>
+        <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>{t(pages[step])}</Text>
         {content()}
       </ScrollView>
       <View style={styles.footer}>
-        {!!error && <Text accessibilityRole="alert" style={[styles.error, { color: dark ? '#ffb7c7' : '#891733' }]}>{error}</Text>}
-        <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving || sessionStart !== null }}
-          disabled={saving || sessionStart !== null} onPress={next} style={[styles.primary, { backgroundColor: green ? '#285922' : '#cc285d' }]}>
-          <Text style={styles.primaryText}>{saving ? 'Saving…' : last ? 'Save' : 'Next'}</Text>
+        {!!error && <Text accessibilityRole="alert" style={[styles.error, { color: dark ? '#ffb7c7' : '#891733' }]}>{t(error)}</Text>}
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving || voiceBusy || sessionStart !== null }}
+          disabled={saving || voiceBusy || sessionStart !== null} onPress={next} style={[styles.primary, { backgroundColor: green ? '#b8db59' : '#ed8da9' }]}>
+          <Text style={styles.primaryText}>{t(saving ? 'Saving…' : last ? 'Save' : 'Next')}</Text>
         </Pressable>
       </View>
     </View>
     <Modal visible={showScale} animationType="slide" onRequestClose={() => setShowScale(false)}>
       <View style={[styles.flex, styles.modal, { backgroundColor: colors.card }]}>
         <View style={styles.spread}>
-          <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>The Pain Scale</Text>
+          <Text accessibilityRole="header" style={[styles.heading, { color: colors.ink }]}>{t('The Pain Scale')}</Text>
           {button('Close', () => setShowScale(false))}
         </View>
         <ScrollView>
           {painDescriptions.map((description, value) => <View key={value} style={[styles.bristol, { borderBottomWidth: 1, borderColor: colors.well }]}>
             <View style={[styles.round, { backgroundColor: painColors[value] }]}><Text style={styles.scaleNumber}>{value}</Text></View>
-            <Text style={[styles.flex, styles.buttonText, { color: colors.ink }]}>{description}</Text>
+            <Text style={[styles.flex, styles.buttonText, { color: colors.ink }]}>{t(description)}</Text>
           </View>)}
         </ScrollView>
       </View>
@@ -372,7 +383,6 @@ export default function LogEditor({ log, options, onSave, onClose }: {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   editor: { flex: 1, alignSelf: 'center', width: '100%', maxWidth: 600 },
-  gradient: { backgroundColor: '#e2f7b2', experimental_backgroundImage: 'linear-gradient(180deg, #edfbcf 0%, #c9ec82 54%, #a9dd58 100%)' },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 10, gap: 8 },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20, gap: 14 },
   footer: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 18, gap: 8 },
@@ -396,16 +406,15 @@ const styles = StyleSheet.create({
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   error: { fontSize: 14, fontWeight: '600' },
   bristol: { flexDirection: 'row', alignItems: 'center', gap: 9, padding: 10, borderRadius: 13 },
-  bristolIcon: { color: '#943b46', minWidth: 28, textAlign: 'center', fontSize: 19, fontWeight: '800' },
+  bristolImage: {width: 36, height: 28, resizeMode: 'contain'},
   typeTag: { paddingHorizontal: 6, paddingVertical: 2, fontSize: 10, fontWeight: '700', color: '#452e37', borderRadius: 8 },
   photo: { width: '100%', aspectRatio: 1.6, borderRadius: 14 },
   scale: { alignItems: 'center', gap: 16, paddingVertical: 10 },
   circle: { width: 145, height: 145, borderRadius: 80, justifyContent: 'center', alignItems: 'center' },
   score: { fontSize: 60, fontWeight: '800', color: 'white' },
   scaleDescription: { fontSize: 17, textAlign: 'center', fontWeight: '700', minHeight: 42 },
-  scaleBar: { flexDirection: 'row', alignSelf: 'stretch', borderRadius: 12, overflow: 'hidden' },
-  scaleCell: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
-  activeScore: { borderWidth: 2, borderColor: '#fff', borderRadius: 7 },
+  scaleBar: { height: 18, alignSelf: 'stretch', borderRadius: 12, overflow: 'hidden' },
+  severity: {backgroundColor: '#3e5427', color: '#fff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, fontSize: 12},
   scaleNumber: { color: 'white', fontSize: 12, fontWeight: '800', textShadowColor: '#2a3229', textShadowRadius: 2 },
   modal: { paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 64 : 30, gap: 14 },
 });

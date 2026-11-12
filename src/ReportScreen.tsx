@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { File, Paths } from 'expo-file-system';
+import { File } from 'expo-file-system';
+import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { isLocalDate, logTitles, type Log } from './diary';
+import { useTranslation } from './i18n';
 import { localDate } from './model';
-import { buildReport, createReportPdf, type ReportRange } from './report';
+import { buildReport, createReportHtml, type ReportRange } from './report';
 
 type Props = { logs: Log[]; onClose: () => void };
 
@@ -16,43 +18,49 @@ function recentRange(days: number): ReportRange {
 }
 
 export default function ReportScreen({ logs, onClose }: Props) {
+  const { t } = useTranslation();
   const [range, setRange] = useState<ReportRange>({ start: '', end: '' });
+  const [patient, setPatient] = useState({ name: '', dob: '' });
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const { start, end } = range;
-  const error = (start && !isLocalDate(start)) || (end && !isLocalDate(end))
+  const error = patient.dob && !isLocalDate(patient.dob) ? 'Enter date of birth in YYYY-MM-DD format.' : (start && !isLocalDate(start)) || (end && !isLocalDate(end))
     ? 'Enter dates in YYYY-MM-DD format.'
     : start && end && start > end ? 'Choose an end date on or after the start date.' : '';
-  const report = useMemo(() => buildReport(logs, range, logTitles), [logs, range]);
+  const report = useMemo(() => buildReport(logs, range, logTitles, patient), [logs, range, patient]);
 
   async function exportPdf() {
     if (error || exporting) return;
     setExporting(true);
     setExportError('');
     try {
-      const bytes = createReportPdf(report);
-      const filename = 'endometriosis-diary-report.pdf';
+      const html = createReportHtml(report);
       if (Platform.OS === 'web') {
-        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        const frame = document.createElement('iframe');
+        frame.style.position = 'fixed'; frame.style.width = '1px'; frame.style.height = '1px'; frame.style.border = '0';
+        document.body.appendChild(frame);
+        await new Promise<void>((resolve, reject) => {
+          frame.onload = () => {
+            if (!frame.contentWindow) { frame.remove(); reject(new Error('Print window unavailable')); return; }
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
+            setTimeout(() => frame.remove(), 60000);
+            resolve();
+          };
+          frame.srcdoc = html;
+        });
       } else {
         if (!await Sharing.isAvailableAsync()) {
           setExportError('PDF sharing is unavailable on this device.');
           return;
         }
-        const file = new File(Paths.cache, filename);
-        file.write(bytes);
+        const result = await Print.printToFileAsync({ html });
+        const file = new File(result.uri);
         try {
           await Sharing.shareAsync(file.uri, {
             mimeType: 'application/pdf',
             UTI: 'com.adobe.pdf',
-            dialogTitle: 'Export diary report',
+            dialogTitle: t('Export diary report'),
           });
         } finally {
           if (file.exists) file.delete();
@@ -69,24 +77,32 @@ export default function ReportScreen({ logs, onClose }: Props) {
     <View style={styles.screen}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Pressable accessibilityRole="button" onPress={onClose} style={styles.close}>
-          <Text style={styles.closeText}>‹  Back</Text>
+          <Text style={styles.closeText}>{t('‹  Back')}</Text>
         </Pressable>
-        <Text accessibilityRole="header" style={styles.title}>Report</Text>
+        <Text accessibilityRole="header" style={styles.title}>{t('Report')}</Text>
         <View style={styles.card}>
-          <Text accessibilityRole="header" style={styles.sectionTitle}>Date range</Text>
+          <Text accessibilityRole="header" style={styles.sectionTitle}>{t('Patient information')}</Text>
+          <Text style={styles.body}>{t('Optional details included only in this report.')}</Text>
+          <Text style={styles.label}>{t('Name')}</Text>
+          <TextInput accessibilityLabel={t('Patient name')} style={styles.input} placeholder={t('Name (optional)')} value={patient.name} onChangeText={name => setPatient(previous => ({ ...previous, name }))} />
+          <Text style={styles.label}>{t('Date of birth')}</Text>
+          <TextInput accessibilityLabel={t('Date of birth')} style={styles.input} placeholder={t('YYYY-MM-DD (optional)')} value={patient.dob} maxLength={10} onChangeText={dob => setPatient(previous => ({ ...previous, dob: dob.trim() }))} />
+        </View>
+        <View style={styles.card}>
+          <Text accessibilityRole="header" style={styles.sectionTitle}>{t('Date range')}</Text>
           <View style={styles.presets}>
             <Pressable accessibilityRole="button" onPress={() => setRange({ start: '', end: '' })} style={styles.preset}>
-              <Text style={styles.presetText}>All dates</Text>
+              <Text style={styles.presetText}>{t('All dates')}</Text>
             </Pressable>
             {[30, 90].map((days) => (
               <Pressable key={days} accessibilityRole="button" onPress={() => setRange(recentRange(days))} style={styles.preset}>
-                <Text style={styles.presetText}>Last {days} days</Text>
+                <Text style={styles.presetText}>{t(`Last ${days} days`)}</Text>
               </Pressable>
             ))}
           </View>
           <View style={styles.dates}>
             {(['start', 'end'] as const).map((field) => {
-              const label = field === 'start' ? 'Start date' : 'End date';
+              const label = t(field === 'start' ? 'Start date' : 'End date');
               return (
                 <View key={field} style={styles.date}>
                   <Text style={styles.label}>{label}</Text>
@@ -105,16 +121,26 @@ export default function ReportScreen({ logs, onClose }: Props) {
               );
             })}
           </View>
-          {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+          {error ? <Text accessibilityRole="alert" style={styles.error}>{t(error)}</Text> : null}
         </View>
 
-        <Text accessibilityRole="header" style={styles.previewTitle}>Preview</Text>
-        {!error && report.map(({ title, blocks }) => (
+        <Text accessibilityRole="header" style={styles.previewTitle}>{t('Preview')}</Text>
+        {!error && report.map(({ title, blocks, trend }) => (
           <View key={title} style={styles.card}>
-            <Text accessibilityRole="header" style={styles.sectionTitle}>{title}</Text>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>{t(title)}</Text>
+            {trend && trend.length > 0 ? <View>
+              <Text style={styles.entryHeading}>{t('Pain intensity over time')}</Text>
+              <Text style={styles.body}>{t('Daily averages · 0–10')}</Text>
+              {trend.map(point => <View key={point.date} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 3 }}>
+                <Text style={{ width: 85, fontSize: 12, color: '#555' }}>{point.date}</Text>
+                <View style={{ flex: 1, backgroundColor: point.period ? '#ffe1e8' : '#eee', height: 10, borderRadius: 5 }}><View style={{ width: `${point.pain * 10}%`, backgroundColor: '#e85d80', height: 10, borderRadius: 5 }} /></View>
+                <Text style={{ width: 30, fontSize: 12 }}>{point.pain}</Text>
+              </View>)}
+              <Text style={styles.body}>{t('Pink background: logged period day. Missing days have no score.')}</Text>
+            </View> : null}
             {blocks.map(({ heading, lines }, index) => (
               <View key={index} style={index > 0 && styles.entry}>
-                {heading ? <Text style={styles.entryHeading}>{heading}</Text> : null}
+                {heading ? <Text style={styles.entryHeading}>{t(heading)}</Text> : null}
                 {lines.map((line, lineIndex) => <Text key={lineIndex} style={styles.body}>{line}</Text>)}
               </View>
             ))}
@@ -122,7 +148,7 @@ export default function ReportScreen({ logs, onClose }: Props) {
         ))}
       </ScrollView>
       <View style={styles.footer}>
-        {exportError ? <Text accessibilityRole="alert" style={styles.error}>{exportError}</Text> : null}
+        {exportError ? <Text accessibilityRole="alert" style={styles.error}>{t(exportError)}</Text> : null}
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ disabled: !!error || exporting, busy: exporting }}
@@ -130,7 +156,7 @@ export default function ReportScreen({ logs, onClose }: Props) {
           onPress={exportPdf}
           style={[styles.exportButton, (!!error || exporting) && styles.disabled]}
         >
-          <Text style={styles.exportText}>{exporting ? 'Exporting…' : 'Export PDF'}</Text>
+          <Text style={styles.exportText}>{t(exporting ? 'Exporting…' : Platform.OS === 'web' ? 'Print / Save PDF' : 'Export PDF')}</Text>
         </Pressable>
       </View>
     </View>

@@ -8,10 +8,13 @@ import * as Sharing from 'expo-sharing';
 import TodayScreen from './src/TodayScreen';
 import LogEditor from './src/LogEditor';
 import ReportScreen from './src/ReportScreen';
+import RemindersScreen from './src/RemindersScreen';
+import LanguageScreen from './src/LanguageScreen';
+import {I18nProvider, translate} from './src/i18n';
 import {HealthScreen, LogDetails, months, OptionEditor, SettingsScreen, YearScreen, type OptionCategory} from './src/DiaryScreens';
 import {createLog, defaultOptions, logTitles, migrateEntries, parseDiary, parseOptions, saveLog, type DiaryOptions, type Log, type LogKind} from './src/diary';
 import {localDate, parseBackup} from './src/model';
-import {accent, RoundButton, Row, styles as ui, usePalette} from './src/ui';
+import {accent, Icon, RoundButton, Row, styles as ui, usePalette} from './src/ui';
 
 const DIARY_KEY = 'endo-companion-diary-v2';
 const OPTIONS_KEY = 'endo-companion-options-v2';
@@ -19,7 +22,7 @@ const PREVIOUS_KEY = 'endo-companion-v1';
 
 const tabs = [['Today', '▦'], ['Year', '▤'], ['Health', '♡'], ['Settings', '⚙']] as const;
 type Tab = typeof tabs[number][0];
-type Screen = {kind: 'add' | 'month' | 'filter' | 'report' | 'appearance'}
+type Screen = {kind: 'add' | 'month' | 'filter' | 'report' | 'appearance' | 'language' | 'reminders' | 'stool'}
   | {kind: 'edit' | 'details'; log: Log}
   | {kind: 'options'; category: OptionCategory};
 const choices: [LogKind, string][] = [
@@ -53,6 +56,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const writing = useRef(false);
   const colors = usePalette(options.theme);
+  const t = (value: string) => translate(value, options.language);
 
   useEffect(() => {
     let active = true;
@@ -189,38 +193,55 @@ export default function App() {
   const dark = colors.bg === '#18181d';
   const statusBar = <StatusBar style={dark ? 'light' : 'dark'} />;
   if (status !== 'ready') return (
-    <SafeAreaView style={pageStyle}>{statusBar}
+    <I18nProvider language={options.language}><SafeAreaView style={pageStyle}>{statusBar}
       {status === 'loading' ? <ActivityIndicator accessibilityLabel="Loading diary" />
         : <Text style={[ui.content, {color: colors.ink}]}>Could not open your saved diary. Restart the app and try again.</Text>}
-    </SafeAreaView>
+    </SafeAreaView></I18nProvider>
   );
 
   if (screen?.kind === 'edit') return (
-    <SafeAreaView style={pageStyle}>{statusBar}
+    <I18nProvider language={options.language}><SafeAreaView style={pageStyle}>{statusBar}
       <LogEditor key={screen.log.id} log={screen.log} options={options} onSave={commit} onClose={close} />
-    </SafeAreaView>
+    </SafeAreaView></I18nProvider>
   );
   if (screen?.kind === 'report') return (
-    <SafeAreaView style={pageStyle}>{statusBar}
+    <I18nProvider language={options.language}><SafeAreaView style={pageStyle}>{statusBar}
       <ReportScreen logs={logs} onClose={close} />
-    </SafeAreaView>
+    </SafeAreaView></I18nProvider>
+  );
+  if (screen?.kind === 'reminders') return (
+    <I18nProvider language={options.language}><SafeAreaView style={pageStyle}>{statusBar}<RemindersScreen onClose={close} colors={colors} /></SafeAreaView></I18nProvider>
+  );
+  if (screen?.kind === 'language') return (
+    <I18nProvider language={options.language}><SafeAreaView style={pageStyle}>{statusBar}
+      <LanguageScreen value={options.language} onChange={language => storeOptions({...options, language})} onClose={close} />
+    </SafeAreaView></I18nProvider>
   );
   if (screen?.kind === 'details') {
     const {log} = screen;
-    return <SafeAreaView style={pageStyle}>{statusBar}
+    return <I18nProvider language={options.language}><SafeAreaView style={pageStyle}>{statusBar}
       <View style={styles.back}><RoundButton label="Back" icon="‹" onPress={close} colors={colors} /></View>
       <LogDetails log={log} colors={colors} edit={() => setScreen({kind: 'edit', log})} remove={() => remove(log)} />
-    </SafeAreaView>;
+    </SafeAreaView></I18nProvider>;
   }
 
   if (screen) return (
-    <SafeAreaView style={pageStyle}>{statusBar}
+    <I18nProvider language={options.language}><SafeAreaView style={pageStyle}>{statusBar}
       <View style={styles.back}><RoundButton label="Back" icon="‹" onPress={close} colors={colors} /></View>
       <ScrollView keyboardShouldPersistTaps="handled">
         {screen.kind === 'options' && <OptionEditor category={screen.category} items={options[screen.category]} colors={colors}
           onChange={items => storeOptions({...options, [screen.category]: items})} />}
+        {screen.kind === 'stool' && <View style={ui.content}>
+          <Text style={[ui.heading, {color: colors.ink}]}>{t('Stool Settings')}</Text>
+          <View style={[ui.card, {backgroundColor: colors.card}]}>
+            <Row label="Show stool images" colors={colors} value={options.showStoolImages ? '✓' : ''}
+              onPress={() => storeOptions({...options, showStoolImages: !options.showStoolImages})} />
+            <Row label="Show type badges" colors={colors} value={options.showStoolTypeBadge ? '✓' : ''}
+              onPress={() => storeOptions({...options, showStoolTypeBadge: !options.showStoolTypeBadge})} />
+          </View>
+        </View>}
         {screen.kind === 'appearance' && <View style={ui.content}>
-          <Text style={[ui.heading, {color: colors.ink}]}>Appearance</Text>
+          <Text style={[ui.heading, {color: colors.ink}]}>{t('Appearance')}</Text>
           <View style={[ui.card, {backgroundColor: colors.card}]}>
             {(['system', 'light', 'dark'] as const).map(theme =>
               <Row key={theme} label={theme[0].toUpperCase() + theme.slice(1)} value={options.theme === theme ? '✓' : undefined}
@@ -229,7 +250,7 @@ export default function App() {
           </View>
         </View>}
         {screen.kind === 'add' && <View style={ui.content}>
-          <Text style={[ui.heading, {color: colors.ink}]}>Add Log</Text>
+          <Text style={[ui.heading, {color: colors.ink}]}>{t('Add Log')}</Text>
           <View style={[ui.card, {backgroundColor: colors.card}]}>
             {choices.map(([kind, label]) => <Row key={kind} label={label} colors={colors} onPress={() => openEditor(kind)} />)}
             <Row label="Daily Note" colors={colors} onPress={() => openEditor('note')} />
@@ -246,7 +267,7 @@ export default function App() {
           </View>
         </View>}
         {screen.kind === 'filter' && <View style={ui.content}>
-          <Text style={[ui.heading, {color: colors.ink}]}>Filter Logs</Text>
+          <Text style={[ui.heading, {color: colors.ink}]}>{t('Filter Logs')}</Text>
           <View style={[ui.card, {backgroundColor: colors.card}]}>
             <Row label="All logs" colors={colors} value={filter.length ? undefined : '✓'} onPress={() => setFilter([])} />
             {(Object.keys(logTitles) as LogKind[]).map(kind =>
@@ -254,14 +275,14 @@ export default function App() {
                 onPress={() => setFilter(current => current.includes(kind) ? current.filter(item => item !== kind) : [...current, kind])} />
             )}
           </View>
-          <Pressable accessibilityRole="button" style={ui.button} onPress={close}><Text style={ui.buttonText}>Done</Text></Pressable>
+          <Pressable accessibilityRole="button" style={ui.button} onPress={close}><Text style={ui.buttonText}>{t('Done')}</Text></Pressable>
         </View>}
       </ScrollView>
-    </SafeAreaView>
+    </SafeAreaView></I18nProvider>
   );
 
   return (
-    <SafeAreaView style={pageStyle}>{statusBar}
+    <I18nProvider language={options.language}><SafeAreaView style={pageStyle}>{statusBar}
       <View style={ui.flex}>
       <ScrollView style={ui.flex} contentContainerStyle={[styles.content, tab === 'Today' && styles.todayContent]}>
         {tab === 'Today' && <TodayScreen date={date} logs={logs} visibleKinds={filter} month={month} colors={colors}
@@ -271,6 +292,7 @@ export default function App() {
         {tab === 'Year' && <YearScreen year={year} logs={logs} colors={colors} changeYear={setYear} openMonth={openMonth} />}
         {tab === 'Health' && <HealthScreen logs={logs} colors={colors} openReport={report} openLog={detail} />}
         {tab === 'Settings' && <SettingsScreen options={options} colors={colors} openReport={report} backup={backup} restore={restore}
+          showLanguage={() => setScreen({kind: 'language'})} showReminders={() => setScreen({kind: 'reminders'})} showStool={() => setScreen({kind: 'stool'})}
           showOptions={category => setScreen({kind: 'options', category})} showAppearance={() => setScreen({kind: 'appearance'})} />}
       </ScrollView>
       {tab === 'Today' && <View pointerEvents="box-none" style={styles.floating}>
@@ -284,12 +306,12 @@ export default function App() {
         {tabs.map(([name, icon]) => (
           <Pressable key={name} accessibilityRole="tab" accessibilityState={{selected: name === tab}}
             style={[styles.tab, name === tab && {backgroundColor: colors.edge}]} onPress={() => setTab(name)}>
-            <Text style={[styles.tabIcon, {color: name === tab ? accent : colors.ink}]}>{icon}</Text>
-            <Text style={[styles.tabText, {color: name === tab ? accent : colors.ink}]}>{name}</Text>
+            <Icon symbol={icon} size={25} color={name === tab ? accent : colors.ink} />
+            <Text style={[styles.tabText, {color: name === tab ? accent : colors.ink}]}>{t(name)}</Text>
           </Pressable>
         ))}
       </View>
-    </SafeAreaView>
+    </SafeAreaView></I18nProvider>
   );
 }
 
