@@ -48,9 +48,9 @@ export function logSummary(log: Log) {
   return Array.isArray(value) ? value.join(' · ') : String(value);
 }
 
-export default function TodayScreen({date, logs, visibleKinds, month, colors, selectDate, openMonth, addLog, openNote, openReport, openLog, openFilter}: {
+export default function TodayScreen({date, logs, visibleKinds, month, colors, selectDate, openMonth, openNote, openReport, openLog, openFilter}: {
   date: string; logs: Log[]; visibleKinds: LogKind[]; month: Date; colors: Palette;
-  selectDate: (date: string) => void; openMonth: () => void; addLog: () => void; openNote: () => void;
+  selectDate: (date: string) => void; openMonth: () => void; openNote: () => void;
   openReport: () => void; openLog: (log: Log) => void; openFilter: () => void;
 }) {
   const today = localDate();
@@ -119,8 +119,6 @@ export default function TodayScreen({date, logs, visibleKinds, month, colors, se
           </Pressable>
         );
       })}
-      <View style={styles.spacer} />
-      <View style={styles.add}><RoundButton label="Add log" icon="+" colors={colors} highlighted onPress={addLog} /></View>
     </View>
   );
 }
@@ -146,6 +144,4 @@ const styles = StyleSheet.create({
   entryContent: {flex: 1, alignItems: 'flex-start', gap: 4},
   entryTitle: {fontWeight: '800', fontSize: 20},
   entryTag: {fontWeight: '600', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12},
-  spacer: {flexGrow: 1},
-  add: {alignSelf: 'flex-end', marginTop: 18},
 });

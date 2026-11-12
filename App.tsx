@@ -262,16 +262,24 @@ export default function App() {
 
   return (
     <SafeAreaView style={pageStyle}>{statusBar}
-      <ScrollView style={ui.flex} contentContainerStyle={styles.content}>
+      <View style={ui.flex}>
+      <ScrollView style={ui.flex} contentContainerStyle={[styles.content, tab === 'Today' && styles.todayContent]}>
         {tab === 'Today' && <TodayScreen date={date} logs={logs} visibleKinds={filter} month={month} colors={colors}
           selectDate={selectDate} openMonth={() => { setYear(month.getFullYear()); setScreen({kind: 'month'}); }}
-          openReport={report} addLog={() => setScreen({kind: 'add'})} openNote={() => openEditor('note')}
+          openReport={report} openNote={() => openEditor('note')}
           openLog={detail} openFilter={() => setScreen({kind: 'filter'})} />}
         {tab === 'Year' && <YearScreen year={year} logs={logs} colors={colors} changeYear={setYear} openMonth={openMonth} />}
         {tab === 'Health' && <HealthScreen logs={logs} colors={colors} openReport={report} openLog={detail} />}
         {tab === 'Settings' && <SettingsScreen options={options} colors={colors} openReport={report} backup={backup} restore={restore}
           showOptions={category => setScreen({kind: 'options', category})} showAppearance={() => setScreen({kind: 'appearance'})} />}
       </ScrollView>
+      {tab === 'Today' && <View pointerEvents="box-none" style={styles.floating}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Add log" onPress={() => setScreen({kind: 'add'})}
+          style={[styles.add, {backgroundColor: colors.card, borderColor: colors.edge}]}>
+          <Text style={styles.plus}>+</Text>
+        </Pressable>
+      </View>}
+      </View>
       <View style={[styles.tabs, {backgroundColor: colors.card, borderColor: colors.edge}]}>
         {tabs.map(([name, icon]) => (
           <Pressable key={name} accessibilityRole="tab" accessibilityState={{selected: name === tab}}
@@ -287,6 +295,10 @@ export default function App() {
 
 const styles = StyleSheet.create({
   content: {flexGrow: 1, width: '100%', maxWidth: 700, alignSelf: 'center'},
+  todayContent: {paddingBottom: 76},
+  floating: {position: 'absolute', width: '100%', maxWidth: 700, alignSelf: 'center', bottom: 8, paddingRight: 16, alignItems: 'flex-end'},
+  add: {width: 56, height: 56, borderRadius: 28, borderWidth: 1, justifyContent: 'center', alignItems: 'center'},
+  plus: {color: accent, fontSize: 34, lineHeight: 38, fontWeight: '500'},
   back: {paddingHorizontal: 16, paddingVertical: 8, alignSelf: 'flex-start'},
   tabs: {marginHorizontal: 20, marginVertical: 6, borderRadius: 40, borderWidth: 1, padding: 3, flexDirection: 'row'},
   tab: {flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 34, paddingVertical: 6, minHeight: 48},
