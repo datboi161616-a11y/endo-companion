@@ -36,7 +36,7 @@ export function Row({label, value, onPress, colors, danger = false}: {
     {!!onPress && <Text style={{color: colors.muted, fontSize: 22}}>›</Text>}</>;
   const rowStyle = [styles.row, {borderBottomColor: colors.edge}];
   return onPress
-    ? <Pressable style={rowStyle} onPress={onPress} accessibilityRole="button">{content}</Pressable>
+    ? <Pressable style={rowStyle} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>{content}</Pressable>
     : <View style={rowStyle}>{content}</View>;
 }
 
@@ -56,4 +56,3 @@ export const styles = StyleSheet.create({
   button: {borderRadius: 16, padding: 14, backgroundColor: accent, alignItems: 'center'},
   buttonText: {color: '#fff', fontSize: 16, fontWeight: '700'},
 });
-

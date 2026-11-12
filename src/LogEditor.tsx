@@ -1,11 +1,13 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, View, useColorScheme,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
-import { isLocalDate, logTitles, type DiaryOptions, type Log } from './diary';
+import { isLocalDate, localTime, logTitles, type DiaryOptions, type Log } from './diary';
+
+import { localDate } from './model';
 
 const questions = {
   pain: ['When did you feel pain?', 'Where did it hurt?', 'How did it hurt?', 'How painful is it?', 'Any other symptoms?', 'Anything else?'],
@@ -49,6 +51,14 @@ export default function LogEditor({ log, options, onSave, onClose }: {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const saveLock = useRef(false);
+  const [sessionStart, setSessionStart] = useState<number | null>(null);
+  const [sessionSeconds, setSessionSeconds] = useState(0);
+
+  useEffect(() => {
+    if (sessionStart === null) return;
+    const tick = setInterval(() => setSessionSeconds(Math.max(0, Math.floor((Date.now() - sessionStart) / 1000))), 1000);
+    return () => clearInterval(tick);
+  }, [sessionStart]);
   const scheme = useColorScheme();
   const dark = options.theme === 'dark' || (options.theme === 'system' && scheme === 'dark');
   const colors = dark
@@ -141,6 +151,10 @@ export default function LogEditor({ log, options, onSave, onClose }: {
       });
       if (result.canceled) return;
       const asset = result.assets[0];
+      if (asset.size !== undefined && asset.size > 5 * 1024 * 1024) {
+        setError('Choose a photo under 5 MB.');
+        return;
+      }
       const data = Platform.OS === 'web' ? asset.base64 : await new File(asset.uri).base64();
       if (!data) throw new Error('Photo data unavailable');
       setMeta('attachment', data.startsWith('data:') ? data : 'data:' + (asset.mimeType || 'image/jpeg') + ';base64,' + data);
@@ -191,6 +205,30 @@ export default function LogEditor({ log, options, onSave, onClose }: {
     </View>);
   }
 
+  function startSession() {
+    const now = new Date();
+    setDraft(current => ({...current, date: localDate(now), time: localTime(now)}));
+    setSessionSeconds(0);
+    setSessionStart(now.getTime());
+    setError('');
+  }
+
+  function stopSession() {
+    if (sessionStart === null) return;
+    const minutes = Math.max(1, Math.ceil((Date.now() - sessionStart) / 60_000));
+    setField('duration', String(minutes));
+    setSessionStart(null);
+  }
+
+  function sessionControls() {
+    if (sessionStart === null) return button('Start Now', startSession);
+    const elapsed = String(Math.floor(sessionSeconds / 60)).padStart(2, '0') + ':' + String(sessionSeconds % 60).padStart(2, '0');
+    return <View style={styles.spread}>
+      <Text style={[styles.buttonText, {color: colors.ink}]} accessibilityLabel="Session elapsed time">{elapsed}</Text>
+      {button('End Session', stopSession)}
+    </View>;
+  }
+
   function content() {
     switch (kind) {
       case 'pain':
@@ -226,6 +264,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
       case 'heat':
       case 'tens':
         return <>{card('Session details', <View style={styles.stack}>
+          {sessionControls()}
           {input('Duration in minutes', String(fields.duration ?? ''), value => setField('duration', value), false, true)}
           {input(kind === 'tens' ? 'Electrode placement' : 'Heating pad placement',
             String(fields.placement ?? ''), value => setField('placement', value))}
@@ -243,7 +282,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
       setStep(step + 1);
       return;
     }
-    if (saveLock.current) return;
+    if (saveLock.current || sessionStart !== null) return;
     if (!isLocalDate(draft.date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.time)) {
       setEditingDate(true);
       setError('Enter a valid date and time.');
@@ -295,7 +334,7 @@ export default function LogEditor({ log, options, onSave, onClose }: {
           <Text style={[styles.buttonText, { color: colors.ink }]}>{draft.date}  ·  {draft.time}  ⌄</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Close editor" style={[styles.round, { backgroundColor: colors.card }]}
-          disabled={saving} onPress={onClose}>
+          disabled={saving || sessionStart !== null} onPress={onClose}>
           <Text style={[styles.toolbarIcon, { color: colors.ink }]}>×</Text>
         </Pressable>
       </View>
@@ -307,8 +346,8 @@ export default function LogEditor({ log, options, onSave, onClose }: {
       </ScrollView>
       <View style={styles.footer}>
         {!!error && <Text accessibilityRole="alert" style={[styles.error, { color: dark ? '#ffb7c7' : '#891733' }]}>{error}</Text>}
-        <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving }}
-          disabled={saving} onPress={next} style={[styles.primary, { backgroundColor: green ? '#285922' : '#cc285d' }]}>
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving || sessionStart !== null }}
+          disabled={saving || sessionStart !== null} onPress={next} style={[styles.primary, { backgroundColor: green ? '#285922' : '#cc285d' }]}>
           <Text style={styles.primaryText}>{saving ? 'Saving…' : last ? 'Save' : 'Next'}</Text>
         </Pressable>
       </View>

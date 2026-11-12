@@ -149,4 +149,3 @@ const styles = StyleSheet.create({
   spacer: {flexGrow: 1},
   add: {alignSelf: 'flex-end', marginTop: 18},
 });
-

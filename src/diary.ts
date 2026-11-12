@@ -108,4 +108,3 @@ export function migrateEntries(entries: Entry[]): Log[] {
     return [pain, period];
   }).sort(byMostRecent);
 }
-
